@@ -1,0 +1,19 @@
+# Pre-encoded content variants (regenerate with ./prepare_content.sh)
+content/*.h264
+content/*.pcm
+
+# Agora SDK (copy or symlink locally — see README)
+agora_sdk/
+
+# Source clip (copied from commentary)
+source_clip/
+
+# Build output
+build/
+
+# Agora SDK runtime droppings
+io.agora.rtc_sdk/
+agorasdk.log
+*.dat
+*.db
+agora_rtc_log/

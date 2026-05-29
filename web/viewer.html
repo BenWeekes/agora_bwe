@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BWE Viewer</title>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N.js"></script>
+<style>
+  body { margin:0; background:#111; color:#eee; font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+  #bar { padding:8px 14px; background:#1c1c1c; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+  input { padding:5px 8px; border-radius:5px; border:1px solid #444; background:#222; color:#eee; }
+  button { background:#2563eb; color:#fff; border:0; padding:6px 16px; border-radius:6px; cursor:pointer; }
+  #state { color:#9ca3af; font-size:13px; }
+  .pill { padding:2px 8px; border-radius:10px; font-size:12px; font-weight:600; }
+  .pill.on { background:#16a34a; } .pill.off { background:#6b7280; }
+  #player { width:100%; height:64vh; background:#000; }
+  #player video { width:100% !important; height:100% !important; object-fit:contain; }
+  #stats { padding:10px 14px; font-family:ui-monospace,Menlo,monospace; font-size:14px; }
+  #stats b { color:#34d399; font-size:18px; }
+</style>
+</head>
+<body>
+  <div id="bar">
+    <span>channel <input id="channel" value="bwe_test" size="10"></span>
+    <span>uid <input id="uid" placeholder="(auto)" size="6"></span>
+    <span id="fbpill" class="pill">FeedbackConfig:2 —</span>
+    <button id="join">Join (view only)</button>
+    <span id="state">idle</span>
+  </div>
+  <div id="player"></div>
+  <div id="stats">
+    downlink recv: <b><span id="kbps">0</span> kbps</b> &nbsp; res <span id="res">—</span>
+    &nbsp; fps <span id="fps">0</span> &nbsp; loss <span id="loss">0</span>%
+    &nbsp; delay <span id="delay">0</span>ms
+  </div>
+
+<script>
+const p = new URLSearchParams(location.search);
+const APP_ID = p.get("appid") || "20b7c51ff4c644ab80cf5a4e646b0537";  // ?appid= overrides
+if (p.get("channel")) document.getElementById("channel").value = p.get("channel");
+if (p.get("uid")) document.getElementById("uid").value = p.get("uid");
+// ?feedback=1 (default) enables EXPERIMENTS FeedbackConfig:2; ?feedback=0 disables it.
+const FEEDBACK = p.get("feedback") !== "0";
+const fbpill = document.getElementById("fbpill");
+fbpill.textContent = "FeedbackConfig:2 " + (FEEDBACK ? "ON" : "OFF");
+fbpill.className = "pill " + (FEEDBACK ? "on" : "off");
+const setState = s => document.getElementById("state").textContent = s;
+
+// rtc mode; we simply never publish, so this is a pure viewer.
+const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+let watching = null;
+
+client.on("user-published", async (user, mediaType) => {
+  await client.subscribe(user, mediaType);
+  setState("subscribed " + mediaType + " from uid " + user.uid);
+  if (mediaType === "video") { watching = user; user.videoTrack.play("player"); }
+  if (mediaType === "audio") user.audioTrack.play();
+});
+client.on("user-unpublished", (user, mediaType) => {
+  if (mediaType === "video" && watching && user.uid === watching.uid) setState("video unpublished by " + user.uid);
+});
+client.on("connection-state-change", c => setState("connection: " + c));
+
+document.getElementById("join").onclick = async () => {
+  document.getElementById("join").disabled = true;
+  try {
+    // Team suggestion: enable downlink feedback so the publisher sees this
+    // receiver's downlink condition. Must be set BEFORE join. Toggle via ?feedback=0.
+    if (FEEDBACK) AgoraRTC.setParameter("EXPERIMENTS", { "FeedbackConfig": 2 });
+
+    const channel = document.getElementById("channel").value.trim();
+    const uid = document.getElementById("uid").value.trim() || null;
+    const myUid = await client.join(APP_ID, channel, null, uid ? Number(uid) : null);
+    setState("joined as uid " + myUid + " (view only)");
+    startStats();
+  } catch (e) {
+    setState("ERROR: " + (e && e.message ? e.message : e));
+    document.getElementById("join").disabled = false;
+  }
+};
+
+function startStats() {
+  setInterval(() => {
+    if (!watching) return;
+    const vs = client.getRemoteVideoStats()[watching.uid];
+    const as = client.getRemoteAudioStats()[watching.uid];
+    if (!vs) return;
+    const vk = Math.round((vs.receiveBitrate || 0) / 1000);
+    const ak = as ? Math.round((as.receiveBitrate || 0) / 1000) : 0;
+    document.getElementById("kbps").textContent = vk + (ak ? " (+" + ak + " audio)" : "");
+    document.getElementById("res").textContent =
+      (vs.receiveResolutionWidth || 0) + "×" + (vs.receiveResolutionHeight || 0);
+    document.getElementById("fps").textContent = Math.round(vs.receiveFrameRate || 0);
+    document.getElementById("loss").textContent =
+      (vs.packetLossRate != null ? vs.packetLossRate.toFixed(1) : "0");
+    document.getElementById("delay").textContent = Math.round(vs.receiveDelay || 0);
+  }, 1000);
+}
+</script>
+</body>
+</html>
