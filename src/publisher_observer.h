@@ -80,7 +80,12 @@ class PublisherObserver : public agora::rtc::IRtcConnectionObserver,
                      agora::rtc::CONNECTION_CHANGED_REASON_TYPE) override {
     LOG_INFO("connection: reconnected");
   }
-  void onCustomUserInfoUpdated(agora::user_id_t, const char*) override {}
+  // NOTE: no 'override' on purpose — onCustomUserInfoUpdated is a pure virtual in
+  // SDK 4.4.32.156 (must be implemented) but does not exist in 4.4.32.154. Omitting
+  // 'override' lets this compile against both: on .156 it satisfies the pure virtual
+  // (override is optional when the signature matches); on .154 it's a harmless extra
+  // method. If you only ever build against .156, you may add 'override' back.
+  void onCustomUserInfoUpdated(agora::user_id_t, const char*) {}
   void onConnectionLost(const agora::rtc::TConnectionInfo&) override {
     LOG_WARN("connection: lost");
   }
